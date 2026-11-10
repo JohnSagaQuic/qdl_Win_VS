@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the UFS provisioning loader. ufs_load() now operates on a
  * caller-owned struct ufs_provisioning instead of module globals, which is
  * what makes it testable here: the tests write a provisioning XML to a temp
@@ -22,13 +25,10 @@
 #include "ufs.h"
 #include "common.h"
 
-#ifdef _WIN32
-const char *__progname = "test_ufs";
-#endif
-
 /* --- stubs --- */
 void ux_err(const char *fmt, ...) { (void)fmt; }
 void ux_info(const char *fmt, ...) { (void)fmt; }
+void ux_warnx(const char *fmt, ...) { (void)fmt; }
 
 int qdl_file_open(struct qdl_zip *z, const char *f, struct qdl_file *file)
 { (void)z; (void)f; (void)file; return -1; }

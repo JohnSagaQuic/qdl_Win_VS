@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the programmer CPIO archive decoder (programmer.c). The
  * decoder parses an untrusted blob, so the tests craft small newc CPIO
  * archives and verify both correct decoding and rejection of the
@@ -42,14 +45,12 @@ int decode_sahara_config(struct sahara_image *blob, struct sahara_image *images,
 	return 0;
 }
 
-#ifdef _WIN32
-/* err() lives in oscompat.c, which the test does not link. */
-void err(int eval, const char *fmt, ...)
+/* Fatal logging lives in ux.c, which the test does not link. */
+void __attribute__((noreturn)) ux_die(int eval, const char *fmt, ...)
 {
 	(void)fmt;
 	exit(eval);
 }
-#endif
 
 void sahara_images_free(struct sahara_image *images, size_t count)
 {

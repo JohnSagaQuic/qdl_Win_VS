@@ -33,19 +33,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos disabled until a runner exists; restore with: [linux, macos]
         os: [linux]
         # One entry per board attached to the runner. "default" uses the
         # runner's .env unchanged; any other name sources ~/hil/<name>.env
         # on the runner host before the suite runs. Board list comes from
         # the dispatch input, else the HIL_LINUX_BOARDS repo variable.
         board: ${{ fromJSON(inputs.boards || vars.HIL_LINUX_BOARDS || '["default"]') }}
+        # macOS is added via include rather than the os list: crossing os
+        # with the Linux board list would dispatch Linux board configs to
+        # the Mac. The Mac rig has a single board via the runner's .env.
+        include:
+          - os: macos
+            board: default
     runs-on: [self-hosted, hil, "${{ matrix.os }}"]
     timeout-minutes: 600
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure
         run: meson setup build
@@ -54,14 +59,16 @@ jobs:
         run: meson compile -C build
 
       - name: Run HIL suite
+        env:
+          BOARD: ${{ matrix.board }}
         run: |
-          if [ "${{ matrix.board }}" != "default" ]; then
-            set -a; . "$HOME/hil/${{ matrix.board }}.env"; set +a
+          if [ "$BOARD" != "default" ]; then
+            set -a; . "$HOME/hil/$BOARD.env"; set +a
           fi
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
       - name: Upload logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: hil-logs-${{ matrix.os }}-${{ matrix.board }}
@@ -83,13 +90,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # release: false reuses the MSYS2 installation already present on
       # the runner instead of downloading one per job. The package list
       # mirrors build.yml.
       - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           release: false
@@ -114,14 +121,16 @@ jobs:
         run: meson compile -C build
 
       - name: Run HIL suite
+        env:
+          BOARD: ${{ matrix.board }}
         run: |
-          if [ "${{ matrix.board }}" != "default" ]; then
-            set -a; . "$HOME/hil/${{ matrix.board }}.env"; set +a
+          if [ "$BOARD" != "default" ]; then
+            set -a; . "$HOME/hil/$BOARD.env"; set +a
           fi
           meson test -C build --suite "${QDL_HIL_SUITE:-hil}" --print-errorlogs
 
       - name: Upload logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: hil-logs-windows-${{ matrix.board }}

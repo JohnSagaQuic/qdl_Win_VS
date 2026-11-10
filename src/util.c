@@ -18,19 +18,11 @@
 #include "file.h"
 #include "oscompat.h"
 #include "qdl.h"
-#include "version.h"
 
 static uint8_t to_hex(uint8_t ch)
 {
 	ch &= 0xf;
 	return ch <= 9 ? '0' + ch : 'a' + ch - 10;
-}
-
-void print_version(void)
-{
-	extern const char *__progname;
-
-	fprintf(stdout, "%s version %s\n", __progname, VERSION);
 }
 
 void print_hex_dump(const char *prefix, const void *buf, size_t len)
@@ -67,7 +59,7 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len)
 
 		line[li] = '\0';
 
-		printf("%s %04x: %s\n", prefix, i, line);
+		ux_info("%s %04x: %s\n", prefix, i, line);
 	}
 }
 
@@ -266,6 +258,30 @@ int decode_backend(const char *name, enum QDL_DEVICE_TYPE *out)
 
 	if (!strcmp(name, "qud")) {
 		*out = QDL_DEVICE_QUD;
+		return 0;
+	}
+
+	return -1;
+}
+
+/*
+ * Decode the value of --color. A bare --color (@name is NULL) means
+ * "always", matching the convention of git, grep and ls.
+ */
+int decode_color_mode(const char *name, enum ux_color_mode *out)
+{
+	if (!name || !strcmp(name, "always")) {
+		*out = UX_COLOR_ALWAYS;
+		return 0;
+	}
+
+	if (!strcmp(name, "auto")) {
+		*out = UX_COLOR_AUTO;
+		return 0;
+	}
+
+	if (!strcmp(name, "never")) {
+		*out = UX_COLOR_NEVER;
 		return 0;
 	}
 

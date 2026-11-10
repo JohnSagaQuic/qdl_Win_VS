@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * nbdkit plugin exposing a Qualcomm EDL device's storage as a block device.
  *
  * Based on the plugin from Bjorn Andersson's nbdkit branch, adapted to the
@@ -123,6 +126,13 @@ err_deinit:
 	return -1;
 }
 
+static void qdl_plugin_load(void)
+{
+	ux_set_progname("nbdkit-qdl-plugin");
+	/* Diagnostics end up in nbdkit's log, never on a terminal of ours */
+	ux_set_color_mode(UX_COLOR_NEVER);
+}
+
 static void qdl_plugin_unload(void)
 {
 	if (!dev)
@@ -203,6 +213,7 @@ static int qdl_plugin_pwrite(void *handle, const void *buf, uint32_t count,
 static struct nbdkit_plugin plugin = {
 	.name = "qdl",
 	.description = "nbdkit Qualcomm Download plugin",
+	.load = qdl_plugin_load,
 	.unload = qdl_plugin_unload,
 	.config = qdl_plugin_config,
 	.config_complete = qdl_plugin_config_complete,

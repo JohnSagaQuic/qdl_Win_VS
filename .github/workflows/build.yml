@@ -10,6 +10,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { arch: x64, os: 26, runner: ubuntu-26.04 }
+          - { arch: arm64, os: 26, runner: ubuntu-26.04-arm }
           - { arch: x64, os: 24, runner: ubuntu-24.04 }
           - { arch: arm64, os: 24, runner: ubuntu-24.04-arm }
           - { arch: x64, os: 22, runner: ubuntu-22.04 }
@@ -17,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -71,7 +73,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qdl-binary-ubuntu-${{matrix.os}}-${{ matrix.arch }}
           path: dist/*
@@ -82,13 +84,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { sys: macos-14, arch: arm64 }
-          - { sys: macos-15-intel, arch: intel }
+          - { sys: macos-26, os: 26, arch: arm64 }
+          - { sys: macos-15, os: 15, arch: arm64 }
+          - { sys: macos-15-intel, os: 15, arch: intel }
     runs-on: ${{ matrix.sys }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -126,9 +129,9 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qdl-binary-macos-${{ matrix.arch }}
+          name: qdl-binary-macos-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*
 
   build-windows:
@@ -142,13 +145,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup MSYS2
         id: msys2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           install: >
@@ -165,14 +168,16 @@ jobs:
             mingw-w64-x86_64-xz
             zip
 
+      - name: Configure git line endings
+        run: git config --global core.autocrlf true
+        shell: msys2 {0}
+
       - name: Configure
         run: meson setup build
         shell: msys2 {0}
 
       - name: Build
-        run: |
-          git config --global core.autocrlf true
-          meson compile -C build
+        run: meson compile -C build
         shell: msys2 {0}
 
       - name: Generate man pages
@@ -185,9 +190,10 @@ jobs:
 
       - name: Package
         shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          $MSYS2_LOCATION = "${{ steps.msys2.outputs.msys2-location }}"
-          $BIN_DIR = Join-Path $MSYS2_LOCATION "mingw64\bin"
+          $BIN_DIR = Join-Path $env:MSYS2_LOCATION "mingw64\bin"
           $DistDir = "dist"
           New-Item -ItemType Directory -Path $DistDir | Out-Null
 
@@ -203,7 +209,7 @@ jobs:
           Copy-Item "./build/qdl.exe" $DistDir
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qdl-binary-windows-${{ matrix.arch }}
           path: dist/*

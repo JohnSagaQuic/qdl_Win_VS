@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * Unit tests for the pure helpers in src/util.c: the storage address
  * parser, the storage-type encode/decode pair, and the XML attribute
  * accessors.
@@ -22,12 +25,9 @@
 #include "qdl.h"
 #include "file.h"
 
-#ifdef _WIN32
-const char *__progname = "test_util";
-#endif
-
 /* --- stubs for symbols referenced by unrelated util.c code --- */
 void ux_err(const char *fmt, ...) { (void)fmt; }
+void ux_info(const char *fmt, ...) { (void)fmt; }
 int qdl_file_open(struct qdl_zip *z, const char *f, struct qdl_file *file)
 { (void)z; (void)f; (void)file; return -1; }
 void *qdl_file_load(struct qdl_file *file, size_t *len) { (void)file; (void)len; return NULL; }
@@ -221,6 +221,31 @@ static void test_decode_backend(void **state)
 	assert_int_equal(decode_backend("bogus", &t), -1);
 }
 
+/* --- decode_color_mode --- */
+
+static void test_decode_color_mode(void **state)
+{
+	enum ux_color_mode m = UX_COLOR_NEVER;
+	(void)state;
+
+	assert_int_equal(decode_color_mode("auto", &m), 0);
+	assert_int_equal(m, UX_COLOR_AUTO);
+
+	assert_int_equal(decode_color_mode("never", &m), 0);
+	assert_int_equal(m, UX_COLOR_NEVER);
+
+	assert_int_equal(decode_color_mode("always", &m), 0);
+	assert_int_equal(m, UX_COLOR_ALWAYS);
+
+	/* A bare --color (NULL value) means always. */
+	m = UX_COLOR_NEVER;
+	assert_int_equal(decode_color_mode(NULL, &m), 0);
+	assert_int_equal(m, UX_COLOR_ALWAYS);
+
+	assert_int_equal(decode_color_mode("bogus", &m), -1);
+	assert_int_equal(decode_color_mode("", &m), -1);
+}
+
 /* --- qdl_split_specifier --- */
 
 static void test_split_specifier(void **state)
@@ -262,6 +287,7 @@ int main(void)
 		cmocka_unit_test(test_storage_type_roundtrip),
 		cmocka_unit_test(test_attr_accessors),
 		cmocka_unit_test(test_decode_backend),
+		cmocka_unit_test(test_decode_color_mode),
 		cmocka_unit_test(test_split_specifier),
 	};
 

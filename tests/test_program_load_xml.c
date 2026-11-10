@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
 #define _FILE_OFFSET_BITS 64
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
@@ -37,10 +40,6 @@
 #define TEST_PAYLOAD "payload.bin"
 #define TEST_INCDIR_PAYLOAD TEST_INCDIR "/" TEST_PAYLOAD
 #define TEST_XMLDIR_PAYLOAD TEST_XMLDIR "/" TEST_PAYLOAD
-
-#ifdef _WIN32
-const char *__progname = "test_program_load_xml";
-#endif
 
 bool qdl_debug;
 
@@ -158,6 +157,12 @@ void ux_init(void)
 
 void ux_err(const char *fmt, ...)
 {
+	(void)fmt;
+}
+
+void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
 	(void)fmt;
 }
 

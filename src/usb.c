@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+/*
  * libusb transport backend.
  *
  * Open-path layering, top to bottom:
@@ -27,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <libusb.h>
 #include "oscompat.h"
@@ -45,6 +49,7 @@ struct qdl_device_usb {
 	size_t in_maxpktsize;
 	size_t out_maxpktsize;
 	size_t out_chunk_size;
+	bool expect_zlp;
 };
 
 /* libusb-typed wrapper around the shared EDL identity check */
@@ -108,6 +113,40 @@ static int usb_enumerate_edl_devices(usb_edl_device_cb_t cb, void *data)
 #define LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK LIBUSB_TRANSFER_TYPE_BULK
 #endif
 
+#define USB_STRING_ATTEMPTS	3
+#define USB_STRING_RETRY_US	20000
+
+static bool usb_string_error_transient(int ret)
+{
+	return ret == LIBUSB_ERROR_IO ||
+	       ret == LIBUSB_ERROR_PIPE ||
+	       ret == LIBUSB_ERROR_TIMEOUT;
+}
+
+static int usb_read_string(struct libusb_device_handle *handle, uint8_t index,
+			   char *buf, size_t len)
+{
+	int attempt;
+	int ret;
+
+	if (!index)
+		return LIBUSB_ERROR_NOT_FOUND;
+
+	for (attempt = 1;; attempt++) {
+		ret = libusb_get_string_descriptor_ascii(handle, index,
+							 (unsigned char *)buf, len);
+		if (ret >= 0 || attempt == USB_STRING_ATTEMPTS ||
+		    !usb_string_error_transient(ret))
+			return ret;
+
+		usleep(USB_STRING_RETRY_US);
+	}
+}
+
+/*
+ * EDL devices carry the serial in iProduct as "_SN:<serial>", other
+ * modes report it in iSerialNumber.
+ */
 static bool usb_read_serial(struct libusb_device_handle *handle,
 			    const struct libusb_device_descriptor *desc,
 			    char *out, size_t out_len)
@@ -116,21 +155,28 @@ static bool usb_read_serial(struct libusb_device_handle *handle,
 	char *p;
 	int ret;
 
-	ret = libusb_get_string_descriptor_ascii(handle, desc->iProduct, (unsigned char *)buf, sizeof(buf));
+	ret = usb_read_string(handle, desc->iProduct, buf, sizeof(buf));
+	if (ret >= 0) {
+		p = strstr(buf, "_SN:");
+		if (p) {
+			p += strlen("_SN:");
+			p[strcspn(p, " _")] = '\0';
+			snprintf(out, out_len, "%s", p);
+			return true;
+		}
+	} else if (ret != LIBUSB_ERROR_NOT_FOUND) {
+		ux_warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+	}
+
+	ret = usb_read_string(handle, desc->iSerialNumber, out, out_len);
 	if (ret < 0) {
-		warnx("failed to read iProduct descriptor: %s", libusb_strerror(ret));
+		if (ret != LIBUSB_ERROR_NOT_FOUND)
+			ux_warnx("failed to read iSerialNumber descriptor: %s",
+				 libusb_strerror(ret));
 		return false;
 	}
 
-	p = strstr(buf, "_SN:");
-	if (!p)
-		return false;
-
-	p += strlen("_SN:");
-	p[strcspn(p, " _")] = '\0';
-
-	snprintf(out, out_len, "%s", p);
-	return true;
+	return ret > 0;
 }
 
 static bool usb_match_serial(struct libusb_device_handle *handle, const char *serial,
@@ -145,7 +191,7 @@ static bool usb_match_serial(struct libusb_device_handle *handle, const char *se
 	if (!usb_read_serial(handle, desc, buf, sizeof(buf)))
 		return false;
 
-	return strcmp(buf, serial) == 0;
+	return strcasecmp(buf, serial) == 0;
 }
 
 /*
@@ -242,7 +288,7 @@ static bool usb_match_device(struct libusb_device_handle *handle,
 
 	ret = libusb_get_active_config_descriptor(libusb_get_device(handle), &config);
 	if (ret < 0) {
-		warnx("failed to acquire USB device's active config descriptor");
+		ux_warnx("failed to acquire USB device's active config descriptor");
 		return false;
 	}
 
@@ -271,7 +317,7 @@ static int usb_open_device(libusb_device *dev,
 
 	ret = libusb_open(dev, &handle);
 	if (ret < 0) {
-		warnx("unable to open USB device");
+		ux_warnx("unable to open USB device");
 		return 0;
 	}
 
@@ -282,7 +328,7 @@ static int usb_open_device(libusb_device *dev,
 
 	ret = libusb_claim_interface(handle, ifc_num);
 	if (ret < 0) {
-		warnx("failed to claim USB interface");
+		ux_warnx("failed to claim USB interface");
 		goto close;
 	}
 
@@ -291,16 +337,17 @@ static int usb_open_device(libusb_device *dev,
 	qdl->out_ep = edl.out_ep;
 	qdl->in_maxpktsize = edl.in_maxpktsize;
 	qdl->out_maxpktsize = edl.out_maxpktsize;
+	qdl->expect_zlp = false;
 
 	if (qdl->out_chunk_size && qdl->out_chunk_size % edl.out_maxpktsize) {
-		ux_err("WARNING: requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld\n",
-		       edl.out_maxpktsize, edl.out_maxpktsize);
+		ux_warnx("requested out-chunk-size must be multiple of the device's wMaxPacketSize %ld, using %ld",
+			 edl.out_maxpktsize, edl.out_maxpktsize);
 		qdl->out_chunk_size = edl.out_maxpktsize;
 	} else if (!qdl->out_chunk_size) {
 		qdl->out_chunk_size = DEFAULT_OUT_CHUNK_SIZE;
 	}
 
-	ux_debug("USB: using out-chunk-size of %ld\n", qdl->out_chunk_size);
+	ux_debug_tag(UX_TAG_USB, "using out-chunk-size of %ld\n", qdl->out_chunk_size);
 
 	return 1;
 
@@ -510,21 +557,32 @@ static int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int 
 	int actual;
 	int ret;
 
-	ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep, buf, len, &actual, timeout);
-	if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT)
-		return -EIO;
-
-	if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
-		return -ETIMEDOUT;
-
-	/* If what we read equals the endpoint's Max Packet Size, consume the ZLP explicitly */
-	if (len == (size_t)actual && !(actual % qdl_usb->in_maxpktsize)) {
+	/*
+	 * On Ubuntu 24.04, an ASMedia ASM2142/ASM3142 xHCI controller completed
+	 * a zero-length host request while the Firehose exchange remained stalled.
+	 * Instead, remember when a transfer may be followed by a ZLP and consume it
+	 * with the caller's next real IN request. If the device omitted the ZLP,
+	 * return the received data directly without a speculative wait.
+	 */
+	for (;;) {
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->in_ep,
-					   NULL, 0, NULL, timeout);
-		if (ret)
-			warnx("Unable to read ZLP: %s", libusb_strerror(ret));
+					   buf, len, &actual, timeout);
+		if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) {
+			qdl_usb->expect_zlp = false;
+			return ret == LIBUSB_ERROR_NO_DEVICE ? -ENODEV : -EIO;
+		}
+
+		if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
+			return -ETIMEDOUT;
+
+		if (!qdl_usb->expect_zlp || actual != 0)
+			break;
+
+		qdl_usb->expect_zlp = false;
 	}
 
+	qdl_usb->expect_zlp = actual > 0 && len == (size_t)actual &&
+			      !(actual % qdl_usb->in_maxpktsize);
 	return actual;
 }
 
@@ -544,7 +602,7 @@ static int usb_write(struct qdl_device *qdl, const void *buf, size_t len, unsign
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->out_ep, data,
 					   xfer, &actual, timeout);
 		if (ret != 0 && ret != LIBUSB_ERROR_TIMEOUT) {
-			warnx("bulk write failed: %s", libusb_strerror(ret));
+			ux_warnx("bulk write failed: %s", libusb_strerror(ret));
 			return -EIO;
 		}
 		if (ret == LIBUSB_ERROR_TIMEOUT && actual == 0)
@@ -555,7 +613,7 @@ static int usb_write(struct qdl_device *qdl, const void *buf, size_t len, unsign
 		data += actual;
 	}
 
-	if (len_orig % qdl_usb->out_maxpktsize == 0) {
+	if (qdl->zlp_aware_host && len_orig % qdl_usb->out_maxpktsize == 0) {
 		ret = libusb_bulk_transfer(qdl_usb->usb_handle, qdl_usb->out_ep, NULL,
 					   0, &actual, timeout);
 		if (ret < 0)
@@ -582,6 +640,7 @@ struct qdl_device *usb_init(void)
 	memset(qdl, 0, sizeof(struct qdl_device_usb));
 
 	qdl->dev_type = QDL_DEVICE_USB;
+	qdl->zlp_aware_host = !qdl_host_is_wsl();
 	qdl->open = usb_open;
 	qdl->read = usb_read;
 	qdl->write = usb_write;

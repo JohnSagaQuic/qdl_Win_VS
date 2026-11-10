@@ -22,10 +22,6 @@
 #include "flashmap.h"
 #include "qdl.h"
 
-#ifdef _WIN32
-const char *__progname = "test_flashmap";
-#endif
-
 #define FLASHMAP_JSON_FILENAME "flashmap.json"
 #define FLASHMAP_MULTI_JSON_FILENAME "flashmap-multi.json"
 #define FLASHMAP_ZIP_FILENAME "flashmap.zip"
@@ -354,6 +350,18 @@ void ux_info(const char *fmt, ...)
 
 void ux_debug(const char *fmt, ...)
 {
+	(void)fmt;
+}
+
+void ux_err_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
+	(void)fmt;
+}
+
+void ux_debug_tag(enum ux_tag tag, const char *fmt, ...)
+{
+	(void)tag;
 	(void)fmt;
 }
 

@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
 #ifndef __QDL_H__
 #define __QDL_H__
 
@@ -14,6 +17,7 @@
 #include "program.h"
 #include "read.h"
 #include <libxml/tree.h>
+#include "ux.h"
 #include "vip.h"
 
 #define container_of(ptr, typecast, member) ({                  \
@@ -80,6 +84,7 @@ struct qdl_device {
 	enum qdl_storage_type current_storage_type;
 	enum qdl_skipblock_mode skipblock_mode;
 	unsigned int slot;
+	bool zlp_aware_host;
 
 	int (*open)(struct qdl_device *qdl, const char *serial);
 	int (*read)(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout);
@@ -209,15 +214,6 @@ void print_hex_dump(const char *prefix, const void *buf, size_t len);
 unsigned int attr_as_unsigned(xmlNode *node, const char *attr, int *errors);
 const char *attr_as_string(xmlNode *node, const char *attr, int *errors);
 bool attr_as_bool(xmlNode *node, const char *attr, int *errors);
-
-void ux_init(void);
-void ux_err(const char *fmt, ...);
-void ux_info(const char *fmt, ...);
-void ux_log(const char *fmt, ...);
-void ux_debug(const char *fmt, ...);
-void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...);
-
-void print_version(void);
 
 int parse_storage_address(const char *address, int *physical_partition,
 			  unsigned int *start_sector, unsigned int *num_sectors,

@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
 #ifndef __OSCOMPAT_H__
 #define __OSCOMPAT_H__
 
@@ -11,8 +14,8 @@
 
 #ifndef _WIN32
 
-#include <err.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -24,11 +27,6 @@
 #include <sys/time.h>
 
 void timeradd(const struct timeval *a, const struct timeval *b, struct timeval *result);
-
-void err(int eval, const char *fmt, ...);
-void errx(int eval, const char *fmt, ...);
-void warn(const char *fmt, ...);
-void warnx(const char *fmt, ...);
 
 #endif
 
@@ -51,6 +49,25 @@ static inline bool path_is_absolute(const char *path)
 		return false;
 	return (isalpha((unsigned char)path[0]) && path[1] == ':') ||
 	       (path[0] == '\\' && path[1] == '\\');
+#endif
+}
+
+static inline bool qdl_host_is_wsl(void)
+{
+#ifndef _WIN32
+	struct utsname u;
+
+	if (uname(&u) < 0)
+		return false;
+
+	return strstr(u.release, "microsoft") ||
+	       strstr(u.release, "Microsoft") ||
+	       strstr(u.release, "WSL") ||
+	       strstr(u.version, "microsoft") ||
+	       strstr(u.version, "Microsoft") ||
+	       strstr(u.version, "WSL");
+#else
+	return false;
 #endif
 }
 
